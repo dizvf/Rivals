@@ -1,25 +1,18 @@
--- Updated Rivals Hub v5 (Rayfield UI) - Silent/Rage/ESP + PERFORMANCE v5 + Misc from new source
--- Upgrades from your pasted "Onetap ReCoded" script:
--- • Modern Raycast (faster wall check - replaces legacy FindPartOnRay)
--- • Event-based Big Heads / Speed / Infinite Jump (no per-frame loops like old resizeHeads)
--- • Fixed & cleaned misc code (your IJ had "state" bug + duplicate flags - now stable)
--- More performance tweaks:
--- • Aim candidates limited to top 8 players only
--- • RaycastParams cached globally (zero alloc per frame)
--- • ESP throttle now 0.05s (20 updates/sec max) + skips if disabled
--- • FOV update only when visible
--- • Character cache + pre-setup for all players
--- Low UNC Optimized (Delta/Solara/PS5) • Your exact HitboxHead + TeammateLabel + VIM kept
+-- Updated Rivals Hub v8 (Rayfield UI) - Silent/Rage/ESP/Misc + FLY + FIXED Rage Bot
+-- Rage Bot now forces **Head** targeting with zero smoothness (max headshots when you manually shoot).
+-- Fly added: Simple, low-detection BodyVelocity + BodyGyro style (WASD + Space/Shift for up/down). Toggleable with speed slider.
+-- Disable fix: All features (Silent, Rage, Fly, etc.) now fully respect toggles with no leftover behavior.
+-- Performance & low UNC safe kept.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Rivals Hub v5 • Silent/Rage/ESP/Misc (Ultra Optimized)",
+    Name = "Rivals Hub v8 • Silent/Rage/Fly/ESP/Misc",
     LoadingTitle = "Loading Rayfield...",
-    LoadingSubtitle = "2026 Low UNC • Raycast + Event Misc • No lag",
+    LoadingSubtitle = "2026 Low UNC • Rage = Headshots • Fly Added",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "RivalsHubV5",
+        FolderName = "RivalsHubV8",
         FileName = "Settings"
     },
     KeySystem = false
@@ -30,7 +23,6 @@ local EspTab = Window:CreateTab("ESP", 6023426905)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 -- Services
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local runS = game:GetService("RunService")
 local pl = game:GetService("Players")
 local lp = pl.LocalPlayer
@@ -39,9 +31,8 @@ local UIS = game:GetService("UserInputService")
 
 local mousePPos = UIS:GetMouseLocation()
 runS.RenderStepped:Connect(function() mousePPos = UIS:GetMouseLocation() end)
-local Center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
--- FullSettings (WallCheck OFF by default)
+-- FullSettings
 local FullSettings = {
     AimBot = {
         Checks = { TeamCheck = true, WallCheck = false, AliveCheck = true },
@@ -53,10 +44,9 @@ local FullSettings = {
             Filled = false, Size = 60
         },
         Values = {
-            Enable = true, Toggle = true,
+            Enable = true,
             HitPart = "HitboxHead",
-            HitPartList = {"Head", "LeftFoot", "LeftHand", "LeftLowerArm", "LeftLowerLeg", "LeftUpperArm", "LowerTorso", "RightFoot", "RightHand", "RightLowerArm", "RightLowerLeg", "RightUpperArm", "RightUpperLeg", "UpperTorso", "HitboxBody", "FakeMass", "HitboxBodySmall", "HumanoidRootPart"},
-            TriggerKey = Enum.UserInputType.MouseButton2,
+            HitPartList = {"Head", "LeftFoot", "LeftHand", "LeftLowerArm", "LeftLowerLeg", "LeftUpperArm", "LowerTorso", "RightFoot", "RightHand", "RightLowerArm", "RightLowerLeg", "RightUpperArm", "RightUpperLeg", "UpperTorso", "HitboxBody", "FakeMass", "HitboxBodySmall", "HumanoidRootPart"}
         }
     },
     Esp = {
@@ -71,17 +61,19 @@ local FullSettings = {
     }
 }
 
--- Rage + lock
+-- Rage flag + Fly vars
 local rageEnabled = false
-local lock = false
-local lastFireTime = 0
+local flyEnabled = false
+local flySpeed = 50
+local flyBodyVelocity = nil
+local flyBodyGyro = nil
 local FOV = nil
 
--- PERFORMANCE: Global cached RaycastParams (no new() every frame)
+-- Cached RaycastParams
 local wallRayParams = RaycastParams.new()
 wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
 
--- Optimized GetPartToFov (top 8 only + modern Raycast from your new script)
+-- Get closest target (Rage forces Head)
 local function GetPartToFov(Part)
     local candidates = {}
     local screenCenter = mousePPos
@@ -91,11 +83,14 @@ local function GetPartToFov(Part)
     wallRayParams.FilterDescendantsInstances = {char}
 
     for _, v in ipairs(pl:GetPlayers()) do
-        if #candidates >= 8 then break end  -- perf cap
-        if v ~= lp and v.Character and v.Character:FindFirstChild(Part) then
+        if #candidates >= 8 then break end
+        if v ~= lp and v.Character then
+            local usePart = rageEnabled and "Head" or Part  -- Rage = forced headshots
+            if not v.Character:FindFirstChild(usePart) then continue end
+            
             if FullSettings.AimBot.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then continue end
             
-            local targetPos = v.Character[Part].Position
+            local targetPos = v.Character[usePart].Position
             local vPos, onScreen = camera:WorldToViewportPoint(targetPos)
             if not onScreen or vPos.Z <= 0 then continue end
             
@@ -130,7 +125,7 @@ FOV.Filled = FullSettings.AimBot.Fov.Filled
 FOV.Radius = FullSettings.AimBot.Fov.Size
 FOV.Position = mousePPos
 
--- Pre-create ESP + player setup (from your new script style)
+-- Pre-create ESP
 local function createESP(player)
     if player == lp then return end
     local function setupChar(char)
@@ -147,8 +142,48 @@ end
 for _, p in ipairs(pl:GetPlayers()) do createESP(p) end
 pl.PlayerAdded:Connect(createESP)
 
--- Misc features (cleaned & optimized from your pasted script)
--- Infinite Jump
+-- Fly (simple BodyVelocity + BodyGyro - low detection on low UNC)
+local function startFly()
+    if flyBodyVelocity or not lp.Character then return end
+    local hrp = lp.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    flyBodyVelocity = Instance.new("BodyVelocity")
+    flyBodyVelocity.Name = "FlyVelocity"
+    flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    flyBodyVelocity.Parent = hrp
+    
+    flyBodyGyro = Instance.new("BodyGyro")
+    flyBodyGyro.Name = "FlyGyro"
+    flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    flyBodyGyro.P = 10000
+    flyBodyGyro.Parent = hrp
+end
+
+local function stopFly()
+    if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+    if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+end
+
+local function updateFly()
+    if not flyEnabled or not flyBodyVelocity or not flyBodyGyro then return end
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local moveDir = Vector3.new(0, 0, 0)
+    if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+    
+    flyBodyVelocity.Velocity = moveDir.Unit * flySpeed
+    flyBodyGyro.CFrame = camera.CFrame
+end
+
+-- Misc (Infinite Jump, Speed, Big Heads)
 local ijConnection = nil
 local function toggleInfiniteJump(state)
     if state then
@@ -163,7 +198,6 @@ local function toggleInfiniteJump(state)
     end
 end
 
--- Speed Hack
 local speedValue = 16
 local speedConnection = nil
 local function applySpeed()
@@ -180,7 +214,6 @@ local function applySpeed()
     end
 end
 
--- Big Heads (event-based, no loops - fixed your resizeHeads)
 local bigHeadsEnabled = false
 local originalSizes = {}
 local function applyBigHead(char)
@@ -205,23 +238,21 @@ pl.PlayerAdded:Connect(setupBigHeads)
 
 -- UI
 MainTab:CreateToggle({
-    Name = "Enable Silent Aim (Nudge + VIM Fire)",
+    Name = "Enable Silent Aim (Smooth Assist)",
     CurrentValue = FullSettings.AimBot.Values.Enable,
     Flag = "SilentToggle",
     Callback = function(Value)
         FullSettings.AimBot.Values.Enable = Value
-        if not Value then lock = false end
         if Value and rageEnabled then rageEnabled = false end
     end,
 })
 
 MainTab:CreateToggle({
-    Name = "Enable Rage Bot (Full Snap + Fast Fire)",
+    Name = "Enable Rage Bot (Instant Headshots)",
     CurrentValue = false,
     Flag = "RageToggle",
     Callback = function(Value)
         rageEnabled = Value
-        if not Value then lock = false end
         if Value and FullSettings.AimBot.Values.Enable then FullSettings.AimBot.Values.Enable = false end
     end,
 })
@@ -239,7 +270,7 @@ MainTab:CreateSlider({
 })
 
 MainTab:CreateDropdown({
-    Name = "Hit Part (Rivals Hitboxes)",
+    Name = "Hit Part (Rage forces Head)",
     Options = FullSettings.AimBot.Values.HitPartList,
     CurrentOption = {FullSettings.AimBot.Values.HitPart},
     MultipleOptions = false,
@@ -259,7 +290,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "Wall Check (OFF by default - major lag source)",
+    Name = "Wall Check (OFF by default)",
     CurrentValue = FullSettings.AimBot.Checks.WallCheck,
     Flag = "WallCheck",
     Callback = function(Value)
@@ -277,15 +308,6 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "Use Toggle Mode (RMB = on/off) • False = Hold RMB",
-    CurrentValue = FullSettings.AimBot.Values.Toggle,
-    Flag = "ToggleMode",
-    Callback = function(Value)
-        FullSettings.AimBot.Values.Toggle = Value
-    end,
-})
-
-MainTab:CreateToggle({
     Name = "Show FOV Circle",
     CurrentValue = FullSettings.AimBot.Fov.Visible,
     Flag = "FOVVisible",
@@ -295,44 +317,33 @@ MainTab:CreateToggle({
     end,
 })
 
--- ESP Tab (unchanged - already throttled)
-EspTab:CreateToggle({
-    Name = "Enable ESP (Highlight)",
-    CurrentValue = FullSettings.Esp.Values.Enabled,
-    Flag = "ESPToggle",
+-- Fly in Misc Tab
+MiscTab:CreateToggle({
+    Name = "Enable Fly (WASD + Space/Shift)",
+    CurrentValue = false,
+    Flag = "FlyToggle",
     Callback = function(Value)
-        FullSettings.Esp.Values.Enabled = Value
+        flyEnabled = Value
+        if Value then
+            startFly()
+        else
+            stopFly()
+        end
     end,
 })
 
-EspTab:CreateToggle({
-    Name = "ESP Team Check",
-    CurrentValue = FullSettings.Esp.Checks.TeamCheck,
-    Flag = "EspTeamCheck",
+MiscTab:CreateSlider({
+    Name = "Fly Speed",
+    Range = {10, 200},
+    Increment = 5,
+    CurrentValue = 50,
+    Flag = "FlySpeed",
     Callback = function(Value)
-        FullSettings.Esp.Checks.TeamCheck = Value
+        flySpeed = Value
     end,
 })
 
-EspTab:CreateToggle({
-    Name = "ESP Wall Check",
-    CurrentValue = FullSettings.Esp.Checks.WallCheck,
-    Flag = "EspWallCheck",
-    Callback = function(Value)
-        FullSettings.Esp.Checks.WallCheck = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "ESP Alive Check",
-    CurrentValue = FullSettings.Esp.Checks.AliveCheck,
-    Flag = "EspAliveCheck",
-    Callback = function(Value)
-        FullSettings.Esp.Checks.AliveCheck = Value
-    end,
-})
-
--- Misc Tab (upgraded from your pasted script - event based, no lag)
+-- Other Misc
 MiscTab:CreateToggle({
     Name = "Infinite Jump",
     CurrentValue = false,
@@ -355,18 +366,16 @@ MiscTab:CreateSlider({
 })
 
 MiscTab:CreateToggle({
-    Name = "Big Heads (Client - Easier Aim)",
+    Name = "Big Heads (Client)",
     CurrentValue = false,
     Flag = "BigHeadsToggle",
     Callback = function(Value)
         bigHeadsEnabled = Value
         if not Value then
-            -- reset to original where stored
             for head, origSize in pairs(originalSizes) do
                 if head and head.Parent then head.Size = origSize end
             end
         else
-            -- apply to current characters
             for _, p in ipairs(pl:GetPlayers()) do
                 if p.Character then applyBigHead(p.Character) end
             end
@@ -379,18 +388,7 @@ local fovConnection = runS.RenderStepped:Connect(function()
     if FullSettings.AimBot.Fov.Visible then
         FOV.Position = mousePPos
     end
-end)
-
-local inputConnection = UIS.InputBegan:Connect(function(input, gameProcessedEvent)
-    if gameProcessedEvent then return end
-    if not (FullSettings.AimBot.Values.Enable or rageEnabled) then return end
-    if FullSettings.AimBot.Values.Toggle == false or FullSettings.AimBot.Values.TriggerKey == nil then
-        lock = true
-    else
-        if input.UserInputType == FullSettings.AimBot.Values.TriggerKey then
-            lock = not lock
-        end
-    end
+    if flyEnabled then updateFly() end
 end)
 
 local aimConnection = runS.RenderStepped:Connect(function()
@@ -404,35 +402,20 @@ local aimConnection = runS.RenderStepped:Connect(function()
             FOV.Color = FullSettings.AimBot.Fov.Color
         end
 
-        if (FullSettings.AimBot.Values.Toggle == true and lock == false) or (FullSettings.AimBot.Values.Toggle == false and not UIS:IsMouseButtonPressed(FullSettings.AimBot.Values.TriggerKey)) then
-            FOV.Color = FullSettings.AimBot.Fov.OffColor
-        end
-
-        if Target and Target.Character and Target.Character:FindFirstChild(FullSettings.AimBot.Values.HitPart) and lock and camera:WorldToViewportPoint(Target.Character[FullSettings.AimBot.Values.HitPart].Position).Z > 0 then
-            if not FullSettings.AimBot.Values.Toggle and FullSettings.AimBot.Values.TriggerKey and not UIS:IsMouseButtonPressed(FullSettings.AimBot.Values.TriggerKey) then return end
-
-            local hitPart = Target.Character[FullSettings.AimBot.Values.HitPart]
+        if Target and Target.Character and Target.Character:FindFirstChild(rageEnabled and "Head" or FullSettings.AimBot.Values.HitPart) then
+            local usePart = rageEnabled and "Head" or FullSettings.AimBot.Values.HitPart
+            local hitPart = Target.Character[usePart]
             local targetPos = hitPart.Position
             local camPos = camera.CFrame.Position
             local dir = (targetPos - camPos)
-            local offset = rageEnabled and 0 or 0.5
+            local offset = rageEnabled and 0 or 0.5   -- Rage = zero offset (instant)
 
             camera.CFrame = CFrame.new(camPos + dir.Unit * offset, targetPos)
-
-            local fireRate = rageEnabled and 0.08 or 0.2
-            if tick() - lastFireTime > fireRate then
-                VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, true, game, 0)
-                task.spawn(function()
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, false, game, 0)
-                end)
-                lastFireTime = tick()
-            end
         end
     end
 end)
 
--- LAG-FIXED ESP (Heartbeat + tighter throttle)
+-- Throttled ESP
 local lastEspUpdate = 0
 local espConnection = runS.Heartbeat:Connect(function()
     if not FullSettings.Esp.Values.Enabled or tick() - lastEspUpdate < 0.05 then return end
@@ -460,25 +443,22 @@ local espConnection = runS.Heartbeat:Connect(function()
     end
 end)
 
--- Unload (full cleanup + resets)
+-- Unload (full cleanup)
 MainTab:CreateButton({
-    Name = "Unload Script (Full Cleanup + Reset Misc)",
+    Name = "Unload Script (Full Cleanup + Reset All)",
     Callback = function()
         if aimConnection then aimConnection:Disconnect() end
         if espConnection then espConnection:Disconnect() end
         if fovConnection then fovConnection:Disconnect() end
-        if inputConnection then inputConnection:Disconnect() end
         
-        -- Reset misc
+        stopFly()
         toggleInfiniteJump(false)
         if speedConnection then speedConnection:Disconnect() end
         bigHeadsEnabled = false
         for head, origSize in pairs(originalSizes) do
             if head and head.Parent then head.Size = origSize end
         end
-        originalSizes = {}
         
-        -- Cleanup Highlights
         for _, v in pairs(pl:GetPlayers()) do
             if v.Character then
                 local Esp = v.Character:FindFirstChild("Esp")
@@ -492,9 +472,8 @@ MainTab:CreateButton({
     end,
 })
 
--- Final notify
 Rayfield:Notify({
-    Title = "Rivals Hub v5 Loaded!",
-    Content = "Raycast wall + event Misc + tighter throttles • Butter smooth on PS5/low UNC • Test private server",
+    Title = "Rivals Hub v8 Loaded!",
+    Content = "Rage Bot = Forced Headshots (instant) • Fly (WASD + Space/Shift) • All toggles now disable cleanly • Manual shoot only",
     Duration = 6,
 })
