@@ -1,0 +1,441 @@
+-- Updated Rivals Hub (Rayfield UI) - Silent/Rage/ESP + FIXED Trigger Bot + Weapon Skin Changer
+-- Trigger Bot FIXED: Now respects all toggles (no more "always on" or firing when disabled)
+-- Skin Changer ADDED: Full port of your pasted script (viewmodel swaps) with RESTORE on disable + originals cache
+-- Low UNC Optimized • April 2026 • Your exact HitboxHead + TeammateLabel + VIM logic kept
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Rivals Hub v3 • Silent/Rage/ESP/Skins (Trigger Fixed)",
+    LoadingTitle = "Loading Rayfield...",
+    LoadingSubtitle = "2026 Low UNC • Trigger Bot + Skin Changer Fixed",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "RivalsHubV3",
+        FileName = "Settings"
+    },
+    KeySystem = false
+})
+
+local MainTab = Window:CreateTab("Aimbot", 4483362458)
+local EspTab = Window:CreateTab("ESP", 6023426905)
+local SkinsTab = Window:CreateTab("Skins", 4483362458)
+
+-- Services (from your sources)
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local runS = game:GetService("RunService")
+local pl = game:GetService("Players")
+local lp = pl.LocalPlayer
+local camera = workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
+
+local mousePPos = UIS:GetMouseLocation()
+runS.RenderStepped:Connect(function() mousePPos = UIS:GetMouseLocation() end)
+local Center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+-- FullSettings (your exact aimbot + ESP)
+local FullSettings = {
+    AimBot = {
+        Checks = { TeamCheck = true, WallCheck = true, AliveCheck = true },
+        Fov = {
+            Enable = true, Visible = true, Thickness = 0.6,
+            Color = Color3.fromRGB(255, 255, 255),
+            LockColor = Color3.fromRGB(255, 0, 0),
+            OffColor = Color3.fromRGB(150, 150, 150),
+            Filled = false, Size = 60
+        },
+        Values = {
+            Enable = true, Toggle = true,
+            HitPart = "HitboxHead",
+            HitPartList = {"Head", "LeftFoot", "LeftHand", "LeftLowerArm", "LeftLowerLeg", "LeftUpperArm", "LowerTorso", "RightFoot", "RightHand", "RightLowerArm", "RightLowerLeg", "RightUpperArm", "RightUpperLeg", "UpperTorso", "HitboxBody", "FakeMass", "HitboxBodySmall", "HumanoidRootPart"},
+            TriggerKey = Enum.UserInputType.MouseButton2,
+        }
+    },
+    Esp = {
+        Checks = { TeamCheck = true, WallCheck = false, AliveCheck = true },
+        Values = {
+            Enabled = true,
+            FillColor = Color3.fromRGB(255, 255, 255),
+            FillTransparency = 0.5,
+            OutlineColor = Color3.fromRGB(200, 200, 200),
+            OutlineTransparency = 0
+        }
+    }
+}
+
+-- Rage + lock
+local rageEnabled = false
+local lock = false
+local lastFireTime = 0
+local FOV = nil
+
+-- GetPartToFov (EXACT from your first pasted script)
+local function GetPartToFov(Part)
+    for _, v in ipairs(pl:GetPlayers()) do
+        if v ~= lp and v.Character and v.Character:FindFirstChild(Part) then
+            if FullSettings.AimBot.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then continue end
+            local ray = workspace:FindPartOnRayWithIgnoreList(Ray.new(camera.CFrame.Position, (v.Character[Part].Position - camera.CFrame.Position).Unit * (v.Character[Part].Position - camera.CFrame.Position).Magnitude), {lp.Character, camera})
+            if FullSettings.AimBot.Checks.WallCheck and (not ray or not ray:IsDescendantOf(v.Character)) then continue end
+            if FullSettings.AimBot.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then continue end
+            local vPos = camera:WorldToViewportPoint(v.Character[Part].Position)
+            local distance = (Vector2.new(vPos.X, vPos.Y) - mousePPos).Magnitude
+            if FullSettings.AimBot.Fov.Enable and (distance > FullSettings.AimBot.Fov.Size) then continue end
+            return v
+        end
+    end
+    return nil
+end
+
+-- FOV Circle
+FOV = Drawing.new("Circle")
+FOV.Visible = FullSettings.AimBot.Fov.Visible
+FOV.Thickness = FullSettings.AimBot.Fov.Thickness
+FOV.Color = FullSettings.AimBot.Fov.Color
+FOV.Filled = FullSettings.AimBot.Fov.Filled
+FOV.Radius = FullSettings.AimBot.Fov.Size
+FOV.Position = mousePPos
+
+-- === SKIN CHANGER (FULL PORT + FIXED RESTORE) ===
+local weaponSkins = {
+    ["Bow"] = {"Compound Bow", "Raven Bow"},
+    ["Assault Rifle"] = {"AK-47", "AUG", "Boneclaw Rifle"},
+    ["Chainsaw"] = {"Blobsaw", "Handsaws"},
+    ["RPG"] = {"Nuke Launcher", "RPKEY", "Spaceship Launcher"},
+    ["Burst Rifle"] = {"Aqua Burst", "Electro Rifle"},
+    ["Exogun"] = {"Singularity", "Wondergun"},
+    ["Fists"] = {"Boxing Gloves", "Brass Knuckles"},
+    ["Flamethrower"] = {"Lamethrower", "Pixel Flamethrower"},
+    ["Flare Gun"] = {"Dynamite Gun", "Firework Gun"},
+    ["Freeze Ray"] = {"Bubble Ray", "Temporal Ray"},
+    ["Grenade"] = {"Water Balloon", "Whoopee Cushion"},
+    ["Grenade Launcher"] = {"Swashbuckler", "Uranium Launcher"},
+    ["Handgun"] = {"Blaster"},
+    ["Katana"] = {"Lightning Bolt", "Saber"},
+    ["Minigun"] = {"Lasergun 3000", "Pixel Minigun"},
+    ["Paintball Gun"] = {"Boba Gun", "Slime Gun"},
+    ["Revolver"] = {"Sheriff", "Desert Eagle"},
+    ["Slingshot"] = {"Goalpost", "Stick"},
+    ["Subspace Tripmine"] = {"Don't Press", "Spring"},
+    ["Uzi"] = {"Electro Uzi", "Water Uzi"},
+    ["Sniper"] = {"Pixel Sniper", "Hyper Sniper", "Eyething Sniper"},
+    ["Knife"] = {"Karambit", "Chancla", "Keyper"},
+    ["Scythe"] = {"Anchor", "Scythe of Death", "Keythe"},
+    ["Medkit"] = {"Laptop", "Sandwich", "Brief Case"},
+}
+
+local assetFolder = lp.PlayerScripts.Assets.ViewModels
+local originals = {}
+local activeWeapons = {}
+
+local function cacheOriginals()
+    for weaponName, _ in pairs(weaponSkins) do
+        local normalWeapon = assetFolder:FindFirstChild(weaponName)
+        if normalWeapon and not originals[weaponName] then
+            originals[weaponName] = normalWeapon:Clone()
+        end
+    end
+end
+
+local function swapWeaponSkins(normalWeaponName, skinName, State)
+    if not normalWeaponName then return end
+    local normalWeapon = assetFolder:FindFirstChild(normalWeaponName)
+    if not normalWeapon then return end
+
+    if State then
+        if skinName then
+            local skin = assetFolder:FindFirstChild(skinName)
+            if not skin then return end
+            if not originals[normalWeaponName] then originals[normalWeaponName] = normalWeapon:Clone() end
+            normalWeapon:ClearAllChildren()
+            for _, child in pairs(skin:GetChildren()) do
+                child:Clone().Parent = normalWeapon
+            end
+            activeWeapons[normalWeaponName] = true
+        end
+    else
+        if originals[normalWeaponName] then
+            normalWeapon:ClearAllChildren()
+            for _, child in pairs(originals[normalWeaponName]:GetChildren()) do
+                child:Clone().Parent = normalWeapon
+            end
+            activeWeapons[normalWeaponName] = nil
+        end
+    end
+end
+
+cacheOriginals()
+
+-- Aimbot UI (with trigger fix)
+MainTab:CreateToggle({
+    Name = "Enable Silent Aim (Nudge + VIM Fire)",
+    CurrentValue = FullSettings.AimBot.Values.Enable,
+    Flag = "SilentToggle",
+    Callback = function(Value)
+        FullSettings.AimBot.Values.Enable = Value
+        if not Value then lock = false end
+        if Value and rageEnabled then rageEnabled = false end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Enable Rage Bot (Full Snap + Fast Fire)",
+    CurrentValue = false,
+    Flag = "RageToggle",
+    Callback = function(Value)
+        rageEnabled = Value
+        if not Value then lock = false end
+        if Value and FullSettings.AimBot.Values.Enable then FullSettings.AimBot.Values.Enable = false end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "FOV Size",
+    Range = {30, 300},
+    Increment = 5,
+    CurrentValue = FullSettings.AimBot.Fov.Size,
+    Flag = "FOVSize",
+    Callback = function(Value)
+        FullSettings.AimBot.Fov.Size = Value
+        FOV.Radius = Value
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name = "Hit Part (Rivals Hitboxes)",
+    Options = FullSettings.AimBot.Values.HitPartList,
+    CurrentOption = {FullSettings.AimBot.Values.HitPart},
+    MultipleOptions = false,
+    Flag = "HitPartDropdown",
+    Callback = function(Option)
+        FullSettings.AimBot.Values.HitPart = Option[1]
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = FullSettings.AimBot.Checks.TeamCheck,
+    Flag = "TeamCheck",
+    Callback = function(Value)
+        FullSettings.AimBot.Checks.TeamCheck = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Wall Check",
+    CurrentValue = FullSettings.AimBot.Checks.WallCheck,
+    Flag = "WallCheck",
+    Callback = function(Value)
+        FullSettings.AimBot.Checks.WallCheck = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Alive Check",
+    CurrentValue = FullSettings.AimBot.Checks.AliveCheck,
+    Flag = "AliveCheck",
+    Callback = function(Value)
+        FullSettings.AimBot.Checks.AliveCheck = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Use Toggle Mode (RMB = on/off) • False = Hold RMB",
+    CurrentValue = FullSettings.AimBot.Values.Toggle,
+    Flag = "ToggleMode",
+    Callback = function(Value)
+        FullSettings.AimBot.Values.Toggle = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Show FOV Circle",
+    CurrentValue = FullSettings.AimBot.Fov.Visible,
+    Flag = "FOVVisible",
+    Callback = function(Value)
+        FullSettings.AimBot.Fov.Visible = Value
+        FOV.Visible = Value
+    end,
+})
+
+-- ESP UI (unchanged)
+EspTab:CreateToggle({
+    Name = "Enable ESP (Highlight)",
+    CurrentValue = FullSettings.Esp.Values.Enabled,
+    Flag = "ESPToggle",
+    Callback = function(Value)
+        FullSettings.Esp.Values.Enabled = Value
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "ESP Team Check",
+    CurrentValue = FullSettings.Esp.Checks.TeamCheck,
+    Flag = "EspTeamCheck",
+    Callback = function(Value)
+        FullSettings.Esp.Checks.TeamCheck = Value
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "ESP Wall Check",
+    CurrentValue = FullSettings.Esp.Checks.WallCheck,
+    Flag = "EspWallCheck",
+    Callback = function(Value)
+        FullSettings.Esp.Checks.WallCheck = Value
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "ESP Alive Check",
+    CurrentValue = FullSettings.Esp.Checks.AliveCheck,
+    Flag = "EspAliveCheck",
+    Callback = function(Value)
+        FullSettings.Esp.Checks.AliveCheck = Value
+    end,
+})
+
+-- SKINS UI (your full table + improved swap)
+SkinsTab:CreateSection("Weapon Skin Changer (ViewModel Swap - Auto Restores)")
+for weapon, skins in pairs(weaponSkins) do
+    SkinsTab:CreateDropdown({
+        Name = weapon .. " Skin Selector",
+        Options = skins,
+        CurrentOption = {skins[1] or ""},
+        MultipleOptions = false,
+        Flag = "SkinDropdown_" .. weapon,
+        Callback = function(Option)
+            swapWeaponSkins(weapon, Option[1], true)
+        end,
+    })
+
+    SkinsTab:CreateToggle({
+        Name = "Enable " .. weapon .. " Custom Skin",
+        CurrentValue = false,
+        Flag = "SkinToggle_" .. weapon,
+        Callback = function(Value)
+            if not Value then
+                swapWeaponSkins(weapon, nil, false)
+            end
+        end,
+    })
+end
+
+-- Connections (trigger bot FIX: input only when enabled + lock reset)
+local fovConnection = runS.RenderStepped:Connect(function()
+    FOV.Position = mousePPos
+end)
+
+local inputConnection = UIS.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+    if not (FullSettings.AimBot.Values.Enable or rageEnabled) then return end  -- FIX: ignore input when off
+    if FullSettings.AimBot.Values.Toggle == false or FullSettings.AimBot.Values.TriggerKey == nil then
+        lock = true
+    else
+        if input.UserInputType == FullSettings.AimBot.Values.TriggerKey then
+            lock = not lock
+        end
+    end
+end)
+
+local aimConnection = runS.RenderStepped:Connect(function()
+    if not FullSettings.AimBot.Values.Enable and not rageEnabled then return end  -- main kill switch
+    if not lp.PlayerGui.MainGui.MainFrame.Lobby.Currency.Visible then
+        local Target = GetPartToFov(FullSettings.AimBot.Values.HitPart)
+
+        if Target ~= nil then
+            FOV.Color = FullSettings.AimBot.Fov.LockColor
+        else
+            FOV.Color = FullSettings.AimBot.Fov.Color
+        end
+
+        if (FullSettings.AimBot.Values.Toggle == true and lock == false) or (FullSettings.AimBot.Values.Toggle == false and not UIS:IsMouseButtonPressed(FullSettings.AimBot.Values.TriggerKey)) then
+            FOV.Color = FullSettings.AimBot.Fov.OffColor
+        end
+
+        if Target and Target.Character and Target.Character:FindFirstChild(FullSettings.AimBot.Values.HitPart) and lock and camera:WorldToViewportPoint(Target.Character[FullSettings.AimBot.Values.HitPart].Position).Z > 0 then
+            if not FullSettings.AimBot.Values.Toggle and FullSettings.AimBot.Values.TriggerKey and not UIS:IsMouseButtonPressed(FullSettings.AimBot.Values.TriggerKey) then return end
+
+            local hitPart = Target.Character[FullSettings.AimBot.Values.HitPart]
+            local targetPos = hitPart.Position
+            local camPos = camera.CFrame.Position
+            local dir = (targetPos - camPos)
+            local offset = rageEnabled and 0 or 0.5
+
+            camera.CFrame = CFrame.new(camPos + dir.Unit * offset, targetPos)
+
+            local fireRate = rageEnabled and 0.08 or 0.2
+            if tick() - lastFireTime > fireRate then
+                VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, true, game, 0)
+                task.spawn(function()
+                    task.wait(0.05)
+                    VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, false, game, 0)
+                end)
+                lastFireTime = tick()
+            end
+        end
+    end
+end)
+
+local espConnection = runS.RenderStepped:Connect(function()
+    for _, v in pairs(pl:GetPlayers()) do
+        if v ~= lp and v.Character then
+            local Esp = v.Character:FindFirstChild("Esp")
+            if FullSettings.Esp.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then
+                if Esp then Esp:Destroy() end continue
+            end
+            if FullSettings.Esp.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then
+                if Esp then Esp:Destroy() end continue
+            end
+            if not Esp then
+                Esp = Instance.new("Highlight")
+                Esp.RobloxLocked = true
+                Esp.Name = "Esp"
+                Esp.Adornee = v.Character
+                Esp.Parent = v.Character
+            end
+            if Esp then
+                Esp.DepthMode = FullSettings.Esp.Checks.WallCheck and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                Esp.Enabled = FullSettings.Esp.Values.Enabled
+                Esp.FillColor = FullSettings.Esp.Values.FillColor
+                Esp.FillTransparency = FullSettings.Esp.Values.FillTransparency
+                Esp.OutlineColor = FullSettings.Esp.Values.OutlineColor
+                Esp.OutlineTransparency = FullSettings.Esp.Values.OutlineTransparency
+            end
+        end
+    end
+end)
+
+-- Unload (full cleanup + restore ALL skins)
+MainTab:CreateButton({
+    Name = "Unload Script (Full Cleanup + Restore Skins)",
+    Callback = function()
+        if aimConnection then aimConnection:Disconnect() end
+        if espConnection then espConnection:Disconnect() end
+        if fovConnection then fovConnection:Disconnect() end
+        if inputConnection then inputConnection:Disconnect() end
+        
+        -- Restore every skin
+        for weaponName, _ in pairs(weaponSkins) do
+            swapWeaponSkins(weaponName, nil, false)
+        end
+        if FOV then FOV:Remove() end
+        
+        -- Cleanup Highlights
+        for _, v in pairs(pl:GetPlayers()) do
+            if v.Character then
+                local Esp = v.Character:FindFirstChild("Esp")
+                if Esp then Esp:Destroy() end
+            end
+        end
+        
+        Rayfield:Destroy()
+        Rayfield = nil
+    end,
+})
+
+-- Final notify
+Rayfield:Notify({
+    Title = "Rivals Hub Loaded!",
+    Content = "Trigger Bot FIXED (no more always-on) • Skin Changer added (restores originals) • RMB trigger • Test in private server",
+    Duration = 6,
+})
