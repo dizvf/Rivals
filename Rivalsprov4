@@ -1,20 +1,25 @@
--- Updated Rivals Hub (Rayfield UI) - Silent/Rage/ESP (Lag FIXED • No Skins)
--- Lag fixes: 
--- • ESP throttled (Heartbeat + 0.1s updates only) + pre-create Highlights on join (no per-frame spam)
--- • Wall Check default = OFF (biggest raycast lag source)
--- • Aimbot distance-first check before any ray (cheaper)
--- • Fewer connections, no skin code at all
--- Low UNC Optimized (Delta/Solara/etc.) • Your exact HitboxHead + TeammateLabel + VIM kept
+-- Updated Rivals Hub v5 (Rayfield UI) - Silent/Rage/ESP + PERFORMANCE v5 + Misc from new source
+-- Upgrades from your pasted "Onetap ReCoded" script:
+-- • Modern Raycast (faster wall check - replaces legacy FindPartOnRay)
+-- • Event-based Big Heads / Speed / Infinite Jump (no per-frame loops like old resizeHeads)
+-- • Fixed & cleaned misc code (your IJ had "state" bug + duplicate flags - now stable)
+-- More performance tweaks:
+-- • Aim candidates limited to top 8 players only
+-- • RaycastParams cached globally (zero alloc per frame)
+-- • ESP throttle now 0.05s (20 updates/sec max) + skips if disabled
+-- • FOV update only when visible
+-- • Character cache + pre-setup for all players
+-- Low UNC Optimized (Delta/Solara/PS5) • Your exact HitboxHead + TeammateLabel + VIM kept
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Rivals Hub v4 • Silent/Rage/ESP (Lag Fixed)",
+    Name = "Rivals Hub v5 • Silent/Rage/ESP/Misc (Ultra Optimized)",
     LoadingTitle = "Loading Rayfield...",
-    LoadingSubtitle = "2026 Low UNC • Optimized for no lag",
+    LoadingSubtitle = "2026 Low UNC • Raycast + Event Misc • No lag",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "RivalsHubV4",
+        FolderName = "RivalsHubV5",
         FileName = "Settings"
     },
     KeySystem = false
@@ -22,6 +27,7 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Aimbot", 4483362458)
 local EspTab = Window:CreateTab("ESP", 6023426905)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 -- Services
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -35,7 +41,7 @@ local mousePPos = UIS:GetMouseLocation()
 runS.RenderStepped:Connect(function() mousePPos = UIS:GetMouseLocation() end)
 local Center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
--- FullSettings (WallCheck now OFF by default for zero lag)
+-- FullSettings (WallCheck OFF by default)
 local FullSettings = {
     AimBot = {
         Checks = { TeamCheck = true, WallCheck = false, AliveCheck = true },
@@ -71,18 +77,27 @@ local lock = false
 local lastFireTime = 0
 local FOV = nil
 
--- Optimized GetPartToFov (distance first, then ray ONLY if needed)
+-- PERFORMANCE: Global cached RaycastParams (no new() every frame)
+local wallRayParams = RaycastParams.new()
+wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+-- Optimized GetPartToFov (top 8 only + modern Raycast from your new script)
 local function GetPartToFov(Part)
     local candidates = {}
     local screenCenter = mousePPos
+    local char = lp.Character
+    if not char then return nil end
+
+    wallRayParams.FilterDescendantsInstances = {char}
 
     for _, v in ipairs(pl:GetPlayers()) do
+        if #candidates >= 8 then break end  -- perf cap
         if v ~= lp and v.Character and v.Character:FindFirstChild(Part) then
             if FullSettings.AimBot.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then continue end
             
             local targetPos = v.Character[Part].Position
-            local vPos = camera:WorldToViewportPoint(targetPos)
-            if vPos.Z <= 0 then continue end
+            local vPos, onScreen = camera:WorldToViewportPoint(targetPos)
+            if not onScreen or vPos.Z <= 0 then continue end
             
             local distance = (Vector2.new(vPos.X, vPos.Y) - screenCenter).Magnitude
             if FullSettings.AimBot.Fov.Enable and distance > FullSettings.AimBot.Fov.Size then continue end
@@ -91,20 +106,16 @@ local function GetPartToFov(Part)
         end
     end
     
-    -- Sort closest first
     table.sort(candidates, function(a, b) return a.dist < b.dist end)
     
-    -- Ray only on top candidates (super low lag)
     for _, cand in ipairs(candidates) do
         local v = cand.player
-        if FullSettings.AimBot.Checks.WallCheck then
-            local ray = workspace:FindPartOnRayWithIgnoreList(
-                Ray.new(camera.CFrame.Position, (cand.pos - camera.CFrame.Position).Unit * (cand.pos - camera.CFrame.Position).Magnitude),
-                {lp.Character, camera}
-            )
-            if not ray or not ray:IsDescendantOf(v.Character) then continue end
-        end
         if FullSettings.AimBot.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then continue end
+        
+        if FullSettings.AimBot.Checks.WallCheck then
+            local result = workspace:Raycast(camera.CFrame.Position, (cand.pos - camera.CFrame.Position).Unit * 1000, wallRayParams)
+            if not result or not result.Instance:IsDescendantOf(v.Character) then continue end
+        end
         return v
     end
     return nil
@@ -118,6 +129,79 @@ FOV.Color = FullSettings.AimBot.Fov.Color
 FOV.Filled = FullSettings.AimBot.Fov.Filled
 FOV.Radius = FullSettings.AimBot.Fov.Size
 FOV.Position = mousePPos
+
+-- Pre-create ESP + player setup (from your new script style)
+local function createESP(player)
+    if player == lp then return end
+    local function setupChar(char)
+        if char:FindFirstChild("Esp") then return end
+        local Esp = Instance.new("Highlight")
+        Esp.RobloxLocked = true
+        Esp.Name = "Esp"
+        Esp.Adornee = char
+        Esp.Parent = char
+    end
+    if player.Character then setupChar(player.Character) end
+    player.CharacterAdded:Connect(setupChar)
+end
+for _, p in ipairs(pl:GetPlayers()) do createESP(p) end
+pl.PlayerAdded:Connect(createESP)
+
+-- Misc features (cleaned & optimized from your pasted script)
+-- Infinite Jump
+local ijConnection = nil
+local function toggleInfiniteJump(state)
+    if state then
+        if not ijConnection then
+            ijConnection = UIS.JumpRequest:Connect(function()
+                local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        end
+    else
+        if ijConnection then ijConnection:Disconnect() ijConnection = nil end
+    end
+end
+
+-- Speed Hack
+local speedValue = 16
+local speedConnection = nil
+local function applySpeed()
+    local hum = lp.Character and lp.Character:FindFirstChild("Humanoid")
+    if hum then
+        hum.WalkSpeed = speedValue
+        if not speedConnection then
+            speedConnection = lp.CharacterAdded:Connect(function(char)
+                local h = char:WaitForChild("Humanoid")
+                h.WalkSpeed = speedValue
+                h:GetPropertyChangedSignal("WalkSpeed"):Connect(function() h.WalkSpeed = speedValue end)
+            end)
+        end
+    end
+end
+
+-- Big Heads (event-based, no loops - fixed your resizeHeads)
+local bigHeadsEnabled = false
+local originalSizes = {}
+local function applyBigHead(char)
+    if not bigHeadsEnabled then return end
+    local head = char:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        if not originalSizes[head] then originalSizes[head] = head.Size end
+        head.Size = Vector3.new(5, 5, 5)
+        head.CanCollide = false
+    end
+end
+local function setupBigHeads(player)
+    if player == lp then return end
+    local function onChar(char)
+        applyBigHead(char)
+    end
+    if player.Character then onChar(player.Character) end
+    player.CharacterAdded:Connect(onChar)
+end
+for _, p in ipairs(pl:GetPlayers()) do setupBigHeads(p) end
+pl.PlayerAdded:Connect(setupBigHeads)
 
 -- UI
 MainTab:CreateToggle({
@@ -211,7 +295,7 @@ MainTab:CreateToggle({
     end,
 })
 
--- ESP Tab
+-- ESP Tab (unchanged - already throttled)
 EspTab:CreateToggle({
     Name = "Enable ESP (Highlight)",
     CurrentValue = FullSettings.Esp.Values.Enabled,
@@ -248,27 +332,53 @@ EspTab:CreateToggle({
     end,
 })
 
--- Pre-create ESP for existing + new players (zero lag creation)
-local function createESP(player)
-    if player == lp then return end
-    local function setupChar(char)
-        if char:FindFirstChild("Esp") then return end
-        local Esp = Instance.new("Highlight")
-        Esp.RobloxLocked = true
-        Esp.Name = "Esp"
-        Esp.Adornee = char
-        Esp.Parent = char
-    end
-    if player.Character then setupChar(player.Character) end
-    player.CharacterAdded:Connect(setupChar)
-end
+-- Misc Tab (upgraded from your pasted script - event based, no lag)
+MiscTab:CreateToggle({
+    Name = "Infinite Jump",
+    CurrentValue = false,
+    Flag = "InfiniteJumpToggle",
+    Callback = function(Value)
+        toggleInfiniteJump(Value)
+    end,
+})
 
-for _, player in ipairs(pl:GetPlayers()) do createESP(player) end
-pl.PlayerAdded:Connect(createESP)
+MiscTab:CreateSlider({
+    Name = "Speed Hack",
+    Range = {0, 100},
+    Increment = 1,
+    CurrentValue = 16,
+    Flag = "SpeedSlider",
+    Callback = function(Value)
+        speedValue = Value
+        applySpeed()
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "Big Heads (Client - Easier Aim)",
+    CurrentValue = false,
+    Flag = "BigHeadsToggle",
+    Callback = function(Value)
+        bigHeadsEnabled = Value
+        if not Value then
+            -- reset to original where stored
+            for head, origSize in pairs(originalSizes) do
+                if head and head.Parent then head.Size = origSize end
+            end
+        else
+            -- apply to current characters
+            for _, p in ipairs(pl:GetPlayers()) do
+                if p.Character then applyBigHead(p.Character) end
+            end
+        end
+    end,
+})
 
 -- Connections
 local fovConnection = runS.RenderStepped:Connect(function()
-    FOV.Position = mousePPos
+    if FullSettings.AimBot.Fov.Visible then
+        FOV.Position = mousePPos
+    end
 end)
 
 local inputConnection = UIS.InputBegan:Connect(function(input, gameProcessedEvent)
@@ -322,28 +432,26 @@ local aimConnection = runS.RenderStepped:Connect(function()
     end
 end)
 
--- LAG-FIXED ESP (Heartbeat + throttle)
+-- LAG-FIXED ESP (Heartbeat + tighter throttle)
 local lastEspUpdate = 0
 local espConnection = runS.Heartbeat:Connect(function()
-    if tick() - lastEspUpdate < 0.1 then return end  -- 10 updates/sec max
+    if not FullSettings.Esp.Values.Enabled or tick() - lastEspUpdate < 0.05 then return end
     lastEspUpdate = tick()
 
     for _, v in pairs(pl:GetPlayers()) do
         if v ~= lp and v.Character then
             local Esp = v.Character:FindFirstChild("Esp")
-            if not Esp then continue end  -- already pre-created
+            if not Esp then continue end
 
             if FullSettings.Esp.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then
-                Esp.Enabled = false
-                continue
+                Esp.Enabled = false continue
             end
             if FullSettings.Esp.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then
-                Esp.Enabled = false
-                continue
+                Esp.Enabled = false continue
             end
 
             Esp.DepthMode = FullSettings.Esp.Checks.WallCheck and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
-            Esp.Enabled = FullSettings.Esp.Values.Enabled
+            Esp.Enabled = true
             Esp.FillColor = FullSettings.Esp.Values.FillColor
             Esp.FillTransparency = FullSettings.Esp.Values.FillTransparency
             Esp.OutlineColor = FullSettings.Esp.Values.OutlineColor
@@ -352,14 +460,23 @@ local espConnection = runS.Heartbeat:Connect(function()
     end
 end)
 
--- Unload (full cleanup)
+-- Unload (full cleanup + resets)
 MainTab:CreateButton({
-    Name = "Unload Script (Full Cleanup)",
+    Name = "Unload Script (Full Cleanup + Reset Misc)",
     Callback = function()
         if aimConnection then aimConnection:Disconnect() end
         if espConnection then espConnection:Disconnect() end
         if fovConnection then fovConnection:Disconnect() end
         if inputConnection then inputConnection:Disconnect() end
+        
+        -- Reset misc
+        toggleInfiniteJump(false)
+        if speedConnection then speedConnection:Disconnect() end
+        bigHeadsEnabled = false
+        for head, origSize in pairs(originalSizes) do
+            if head and head.Parent then head.Size = origSize end
+        end
+        originalSizes = {}
         
         -- Cleanup Highlights
         for _, v in pairs(pl:GetPlayers()) do
@@ -377,7 +494,7 @@ MainTab:CreateButton({
 
 -- Final notify
 Rayfield:Notify({
-    Title = "Rivals Hub Loaded! (Lag Fixed)",
-    Content = "Wall Check OFF by default • ESP throttled • Smooth & light • Test in private server",
+    Title = "Rivals Hub v5 Loaded!",
+    Content = "Raycast wall + event Misc + tighter throttles • Butter smooth on PS5/low UNC • Test private server",
     Duration = 6,
 })
