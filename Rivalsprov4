@@ -1,17 +1,20 @@
--- Updated Rivals Hub (Rayfield UI) - Silent/Rage/ESP + FIXED Trigger Bot + Weapon Skin Changer
--- Trigger Bot FIXED: Now respects all toggles (no more "always on" or firing when disabled)
--- Skin Changer ADDED: Full port of your pasted script (viewmodel swaps) with RESTORE on disable + originals cache
--- Low UNC Optimized • April 2026 • Your exact HitboxHead + TeammateLabel + VIM logic kept
+-- Updated Rivals Hub (Rayfield UI) - Silent/Rage/ESP (Lag FIXED • No Skins)
+-- Lag fixes: 
+-- • ESP throttled (Heartbeat + 0.1s updates only) + pre-create Highlights on join (no per-frame spam)
+-- • Wall Check default = OFF (biggest raycast lag source)
+-- • Aimbot distance-first check before any ray (cheaper)
+-- • Fewer connections, no skin code at all
+-- Low UNC Optimized (Delta/Solara/etc.) • Your exact HitboxHead + TeammateLabel + VIM kept
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Rivals Hub v3 • Silent/Rage/ESP/Skins (Trigger Fixed)",
+    Name = "Rivals Hub v4 • Silent/Rage/ESP (Lag Fixed)",
     LoadingTitle = "Loading Rayfield...",
-    LoadingSubtitle = "2026 Low UNC • Trigger Bot + Skin Changer Fixed",
+    LoadingSubtitle = "2026 Low UNC • Optimized for no lag",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "RivalsHubV3",
+        FolderName = "RivalsHubV4",
         FileName = "Settings"
     },
     KeySystem = false
@@ -19,9 +22,8 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Aimbot", 4483362458)
 local EspTab = Window:CreateTab("ESP", 6023426905)
-local SkinsTab = Window:CreateTab("Skins", 4483362458)
 
--- Services (from your sources)
+-- Services
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local runS = game:GetService("RunService")
 local pl = game:GetService("Players")
@@ -33,10 +35,10 @@ local mousePPos = UIS:GetMouseLocation()
 runS.RenderStepped:Connect(function() mousePPos = UIS:GetMouseLocation() end)
 local Center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
--- FullSettings (your exact aimbot + ESP)
+-- FullSettings (WallCheck now OFF by default for zero lag)
 local FullSettings = {
     AimBot = {
-        Checks = { TeamCheck = true, WallCheck = true, AliveCheck = true },
+        Checks = { TeamCheck = true, WallCheck = false, AliveCheck = true },
         Fov = {
             Enable = true, Visible = true, Thickness = 0.6,
             Color = Color3.fromRGB(255, 255, 255),
@@ -69,19 +71,41 @@ local lock = false
 local lastFireTime = 0
 local FOV = nil
 
--- GetPartToFov (EXACT from your first pasted script)
+-- Optimized GetPartToFov (distance first, then ray ONLY if needed)
 local function GetPartToFov(Part)
+    local candidates = {}
+    local screenCenter = mousePPos
+
     for _, v in ipairs(pl:GetPlayers()) do
         if v ~= lp and v.Character and v.Character:FindFirstChild(Part) then
             if FullSettings.AimBot.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then continue end
-            local ray = workspace:FindPartOnRayWithIgnoreList(Ray.new(camera.CFrame.Position, (v.Character[Part].Position - camera.CFrame.Position).Unit * (v.Character[Part].Position - camera.CFrame.Position).Magnitude), {lp.Character, camera})
-            if FullSettings.AimBot.Checks.WallCheck and (not ray or not ray:IsDescendantOf(v.Character)) then continue end
-            if FullSettings.AimBot.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then continue end
-            local vPos = camera:WorldToViewportPoint(v.Character[Part].Position)
-            local distance = (Vector2.new(vPos.X, vPos.Y) - mousePPos).Magnitude
-            if FullSettings.AimBot.Fov.Enable and (distance > FullSettings.AimBot.Fov.Size) then continue end
-            return v
+            
+            local targetPos = v.Character[Part].Position
+            local vPos = camera:WorldToViewportPoint(targetPos)
+            if vPos.Z <= 0 then continue end
+            
+            local distance = (Vector2.new(vPos.X, vPos.Y) - screenCenter).Magnitude
+            if FullSettings.AimBot.Fov.Enable and distance > FullSettings.AimBot.Fov.Size then continue end
+            
+            table.insert(candidates, {player = v, dist = distance, pos = targetPos})
         end
+    end
+    
+    -- Sort closest first
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+    
+    -- Ray only on top candidates (super low lag)
+    for _, cand in ipairs(candidates) do
+        local v = cand.player
+        if FullSettings.AimBot.Checks.WallCheck then
+            local ray = workspace:FindPartOnRayWithIgnoreList(
+                Ray.new(camera.CFrame.Position, (cand.pos - camera.CFrame.Position).Unit * (cand.pos - camera.CFrame.Position).Magnitude),
+                {lp.Character, camera}
+            )
+            if not ray or not ray:IsDescendantOf(v.Character) then continue end
+        end
+        if FullSettings.AimBot.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then continue end
+        return v
     end
     return nil
 end
@@ -95,77 +119,7 @@ FOV.Filled = FullSettings.AimBot.Fov.Filled
 FOV.Radius = FullSettings.AimBot.Fov.Size
 FOV.Position = mousePPos
 
--- === SKIN CHANGER (FULL PORT + FIXED RESTORE) ===
-local weaponSkins = {
-    ["Bow"] = {"Compound Bow", "Raven Bow"},
-    ["Assault Rifle"] = {"AK-47", "AUG", "Boneclaw Rifle"},
-    ["Chainsaw"] = {"Blobsaw", "Handsaws"},
-    ["RPG"] = {"Nuke Launcher", "RPKEY", "Spaceship Launcher"},
-    ["Burst Rifle"] = {"Aqua Burst", "Electro Rifle"},
-    ["Exogun"] = {"Singularity", "Wondergun"},
-    ["Fists"] = {"Boxing Gloves", "Brass Knuckles"},
-    ["Flamethrower"] = {"Lamethrower", "Pixel Flamethrower"},
-    ["Flare Gun"] = {"Dynamite Gun", "Firework Gun"},
-    ["Freeze Ray"] = {"Bubble Ray", "Temporal Ray"},
-    ["Grenade"] = {"Water Balloon", "Whoopee Cushion"},
-    ["Grenade Launcher"] = {"Swashbuckler", "Uranium Launcher"},
-    ["Handgun"] = {"Blaster"},
-    ["Katana"] = {"Lightning Bolt", "Saber"},
-    ["Minigun"] = {"Lasergun 3000", "Pixel Minigun"},
-    ["Paintball Gun"] = {"Boba Gun", "Slime Gun"},
-    ["Revolver"] = {"Sheriff", "Desert Eagle"},
-    ["Slingshot"] = {"Goalpost", "Stick"},
-    ["Subspace Tripmine"] = {"Don't Press", "Spring"},
-    ["Uzi"] = {"Electro Uzi", "Water Uzi"},
-    ["Sniper"] = {"Pixel Sniper", "Hyper Sniper", "Eyething Sniper"},
-    ["Knife"] = {"Karambit", "Chancla", "Keyper"},
-    ["Scythe"] = {"Anchor", "Scythe of Death", "Keythe"},
-    ["Medkit"] = {"Laptop", "Sandwich", "Brief Case"},
-}
-
-local assetFolder = lp.PlayerScripts.Assets.ViewModels
-local originals = {}
-local activeWeapons = {}
-
-local function cacheOriginals()
-    for weaponName, _ in pairs(weaponSkins) do
-        local normalWeapon = assetFolder:FindFirstChild(weaponName)
-        if normalWeapon and not originals[weaponName] then
-            originals[weaponName] = normalWeapon:Clone()
-        end
-    end
-end
-
-local function swapWeaponSkins(normalWeaponName, skinName, State)
-    if not normalWeaponName then return end
-    local normalWeapon = assetFolder:FindFirstChild(normalWeaponName)
-    if not normalWeapon then return end
-
-    if State then
-        if skinName then
-            local skin = assetFolder:FindFirstChild(skinName)
-            if not skin then return end
-            if not originals[normalWeaponName] then originals[normalWeaponName] = normalWeapon:Clone() end
-            normalWeapon:ClearAllChildren()
-            for _, child in pairs(skin:GetChildren()) do
-                child:Clone().Parent = normalWeapon
-            end
-            activeWeapons[normalWeaponName] = true
-        end
-    else
-        if originals[normalWeaponName] then
-            normalWeapon:ClearAllChildren()
-            for _, child in pairs(originals[normalWeaponName]:GetChildren()) do
-                child:Clone().Parent = normalWeapon
-            end
-            activeWeapons[normalWeaponName] = nil
-        end
-    end
-end
-
-cacheOriginals()
-
--- Aimbot UI (with trigger fix)
+-- UI
 MainTab:CreateToggle({
     Name = "Enable Silent Aim (Nudge + VIM Fire)",
     CurrentValue = FullSettings.AimBot.Values.Enable,
@@ -221,7 +175,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "Wall Check",
+    Name = "Wall Check (OFF by default - major lag source)",
     CurrentValue = FullSettings.AimBot.Checks.WallCheck,
     Flag = "WallCheck",
     Callback = function(Value)
@@ -257,7 +211,7 @@ MainTab:CreateToggle({
     end,
 })
 
--- ESP UI (unchanged)
+-- ESP Tab
 EspTab:CreateToggle({
     Name = "Enable ESP (Highlight)",
     CurrentValue = FullSettings.Esp.Values.Enabled,
@@ -294,40 +248,32 @@ EspTab:CreateToggle({
     end,
 })
 
--- SKINS UI (your full table + improved swap)
-SkinsTab:CreateSection("Weapon Skin Changer (ViewModel Swap - Auto Restores)")
-for weapon, skins in pairs(weaponSkins) do
-    SkinsTab:CreateDropdown({
-        Name = weapon .. " Skin Selector",
-        Options = skins,
-        CurrentOption = {skins[1] or ""},
-        MultipleOptions = false,
-        Flag = "SkinDropdown_" .. weapon,
-        Callback = function(Option)
-            swapWeaponSkins(weapon, Option[1], true)
-        end,
-    })
-
-    SkinsTab:CreateToggle({
-        Name = "Enable " .. weapon .. " Custom Skin",
-        CurrentValue = false,
-        Flag = "SkinToggle_" .. weapon,
-        Callback = function(Value)
-            if not Value then
-                swapWeaponSkins(weapon, nil, false)
-            end
-        end,
-    })
+-- Pre-create ESP for existing + new players (zero lag creation)
+local function createESP(player)
+    if player == lp then return end
+    local function setupChar(char)
+        if char:FindFirstChild("Esp") then return end
+        local Esp = Instance.new("Highlight")
+        Esp.RobloxLocked = true
+        Esp.Name = "Esp"
+        Esp.Adornee = char
+        Esp.Parent = char
+    end
+    if player.Character then setupChar(player.Character) end
+    player.CharacterAdded:Connect(setupChar)
 end
 
--- Connections (trigger bot FIX: input only when enabled + lock reset)
+for _, player in ipairs(pl:GetPlayers()) do createESP(player) end
+pl.PlayerAdded:Connect(createESP)
+
+-- Connections
 local fovConnection = runS.RenderStepped:Connect(function()
     FOV.Position = mousePPos
 end)
 
 local inputConnection = UIS.InputBegan:Connect(function(input, gameProcessedEvent)
     if gameProcessedEvent then return end
-    if not (FullSettings.AimBot.Values.Enable or rageEnabled) then return end  -- FIX: ignore input when off
+    if not (FullSettings.AimBot.Values.Enable or rageEnabled) then return end
     if FullSettings.AimBot.Values.Toggle == false or FullSettings.AimBot.Values.TriggerKey == nil then
         lock = true
     else
@@ -338,7 +284,7 @@ local inputConnection = UIS.InputBegan:Connect(function(input, gameProcessedEven
 end)
 
 local aimConnection = runS.RenderStepped:Connect(function()
-    if not FullSettings.AimBot.Values.Enable and not rageEnabled then return end  -- main kill switch
+    if not FullSettings.AimBot.Values.Enable and not rageEnabled then return end
     if not lp.PlayerGui.MainGui.MainFrame.Lobby.Currency.Visible then
         local Target = GetPartToFov(FullSettings.AimBot.Values.HitPart)
 
@@ -376,49 +322,44 @@ local aimConnection = runS.RenderStepped:Connect(function()
     end
 end)
 
-local espConnection = runS.RenderStepped:Connect(function()
+-- LAG-FIXED ESP (Heartbeat + throttle)
+local lastEspUpdate = 0
+local espConnection = runS.Heartbeat:Connect(function()
+    if tick() - lastEspUpdate < 0.1 then return end  -- 10 updates/sec max
+    lastEspUpdate = tick()
+
     for _, v in pairs(pl:GetPlayers()) do
         if v ~= lp and v.Character then
             local Esp = v.Character:FindFirstChild("Esp")
+            if not Esp then continue end  -- already pre-created
+
             if FullSettings.Esp.Checks.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid") and v.Character.Humanoid.Health <= 0 then
-                if Esp then Esp:Destroy() end continue
+                Esp.Enabled = false
+                continue
             end
             if FullSettings.Esp.Checks.TeamCheck and v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("TeammateLabel") then
-                if Esp then Esp:Destroy() end continue
+                Esp.Enabled = false
+                continue
             end
-            if not Esp then
-                Esp = Instance.new("Highlight")
-                Esp.RobloxLocked = true
-                Esp.Name = "Esp"
-                Esp.Adornee = v.Character
-                Esp.Parent = v.Character
-            end
-            if Esp then
-                Esp.DepthMode = FullSettings.Esp.Checks.WallCheck and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
-                Esp.Enabled = FullSettings.Esp.Values.Enabled
-                Esp.FillColor = FullSettings.Esp.Values.FillColor
-                Esp.FillTransparency = FullSettings.Esp.Values.FillTransparency
-                Esp.OutlineColor = FullSettings.Esp.Values.OutlineColor
-                Esp.OutlineTransparency = FullSettings.Esp.Values.OutlineTransparency
-            end
+
+            Esp.DepthMode = FullSettings.Esp.Checks.WallCheck and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+            Esp.Enabled = FullSettings.Esp.Values.Enabled
+            Esp.FillColor = FullSettings.Esp.Values.FillColor
+            Esp.FillTransparency = FullSettings.Esp.Values.FillTransparency
+            Esp.OutlineColor = FullSettings.Esp.Values.OutlineColor
+            Esp.OutlineTransparency = FullSettings.Esp.Values.OutlineTransparency
         end
     end
 end)
 
--- Unload (full cleanup + restore ALL skins)
+-- Unload (full cleanup)
 MainTab:CreateButton({
-    Name = "Unload Script (Full Cleanup + Restore Skins)",
+    Name = "Unload Script (Full Cleanup)",
     Callback = function()
         if aimConnection then aimConnection:Disconnect() end
         if espConnection then espConnection:Disconnect() end
         if fovConnection then fovConnection:Disconnect() end
         if inputConnection then inputConnection:Disconnect() end
-        
-        -- Restore every skin
-        for weaponName, _ in pairs(weaponSkins) do
-            swapWeaponSkins(weaponName, nil, false)
-        end
-        if FOV then FOV:Remove() end
         
         -- Cleanup Highlights
         for _, v in pairs(pl:GetPlayers()) do
@@ -427,6 +368,7 @@ MainTab:CreateButton({
                 if Esp then Esp:Destroy() end
             end
         end
+        if FOV then FOV:Remove() end
         
         Rayfield:Destroy()
         Rayfield = nil
@@ -435,7 +377,7 @@ MainTab:CreateButton({
 
 -- Final notify
 Rayfield:Notify({
-    Title = "Rivals Hub Loaded!",
-    Content = "Trigger Bot FIXED (no more always-on) • Skin Changer added (restores originals) • RMB trigger • Test in private server",
+    Title = "Rivals Hub Loaded! (Lag Fixed)",
+    Content = "Wall Check OFF by default • ESP throttled • Smooth & light • Test in private server",
     Duration = 6,
 })
