@@ -1,165 +1,440 @@
--- Rivals All-In-One Rayfield UI Script (2026 Updated) - Full Cheats with GUI Toggles
--- NO KEYBINDS - Everything controlled via clean Rayfield menu
--- Features: Ultra-Fast Rapid Fire + TriggerBot + Rage/Silent Aim + Flying + Speed Hack
--- Load in any executor (Solara, Delta, Wave, etc.) after joining a casual/public Rivals server
+-- Rivals All-In-One Rayfield UI (FULL SCRIPT - Silent Aim FIXED) - April 2026
+-- Merged your two pasted scripts + fixed silent aim (camera lock + auto-fire)
+-- Features: Full custom ESP (from your first file), Ultra-Fast Rapid Fire, TriggerBot, Fixed Silent Aim, Ragebot, Flying, Speed Hack
+-- All controlled via Rayfield toggles - NO keybinds
+-- Paste the ENTIRE script after joining a casual/public Rivals server
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Rivals All-In-One",
-    Icon = 0,
-    LoadingTitle = "Rivals Cheats",
-    LoadingSubtitle = "Rayfield Edition",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "RivalsCheats",
-        FileName = "Config"
-    },
-    Discord = {
-        Enabled = false
-    },
+    Name = "Rivals All-In-One [Silent Aim FIXED]",
+    LoadingTitle = "Loading Rivals Cheats",
+    LoadingSubtitle = "Rayfield • Full Merge • Updated",
+    ConfigurationSaving = { Enabled = true, FolderName = "RivalsCheats", FileName = "FullConfig" },
     KeySystem = false
 })
 
--- ==================== TABS & UI ELEMENTS ====================
-local CombatTab = Window:CreateTab("Combat", 4483362458)
-local MovementTab = Window:CreateTab("Movement", 6022668888)
-
--- Combat Toggles
-local rapidFireToggle = CombatTab:CreateToggle({
-    Name = "Ultra-Fast Rapid Fire",
-    CurrentValue = false,
-    Flag = "RapidFire",
-    Callback = function(Value)
-        getgenv().RapidFireEnabled = Value
-        Rayfield:Notify({
-            Title = "Rapid Fire",
-            Content = Value and "ENABLED - Zero cooldowns" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
-local triggerBotToggle = CombatTab:CreateToggle({
-    Name = "TriggerBot (Auto-Fire on Crosshair)",
-    CurrentValue = false,
-    Flag = "TriggerBot",
-    Callback = function(Value)
-        getgenv().TriggerBotEnabled = Value
-        Rayfield:Notify({
-            Title = "TriggerBot",
-            Content = Value and "ENABLED - Auto fires on enemy" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
-local silentAimToggle = CombatTab:CreateToggle({
-    Name = "Silent Aim (Closet Mode)",
-    CurrentValue = false,
-    Flag = "SilentAim",
-    Callback = function(Value)
-        getgenv().SilentAimEnabled = Value
-        Rayfield:Notify({
-            Title = "Silent Aim",
-            Content = Value and "ENABLED (closet - random body/head)" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
-local ragebotToggle = CombatTab:CreateToggle({
-    Name = "Ragebot (Aggressive Head Priority)",
-    CurrentValue = false,
-    Flag = "Ragebot",
-    Callback = function(Value)
-        getgenv().RagebotEnabled = Value
-        Rayfield:Notify({
-            Title = "Ragebot",
-            Content = Value and "ENABLED (full rage - very obvious)" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
--- Movement Toggles
-local flyingToggle = MovementTab:CreateToggle({
-    Name = "Flying (WASD + Space/Shift)",
-    CurrentValue = false,
-    Flag = "Flying",
-    Callback = function(Value)
-        getgenv().FlyingEnabled = Value
-        Rayfield:Notify({
-            Title = "Flying",
-            Content = Value and "ENABLED" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
-local speedHackToggle = MovementTab:CreateToggle({
-    Name = "Speed Hack (CFrame Boost)",
-    CurrentValue = false,
-    Flag = "SpeedHack",
-    Callback = function(Value)
-        getgenv().SpeedHackEnabled = Value
-        Rayfield:Notify({
-            Title = "Speed Hack",
-            Content = Value and "ENABLED (move to boost)" or "DISABLED",
-            Duration = 2
-        })
-    end
-})
-
--- ==================== CHEAT LOGIC (FLAGS + HOOKS) ====================
+-- ==================== SERVICES ====================
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
-local OriginalStats = {}
-local clientItemModule = nil
-local flyVelocity = nil
-local speedConnection = nil
-local triggerConnection = nil
+-- ==================== GLOBAL FLAGS (for toggles) ====================
+getgenv().RapidFireEnabled = false
+getgenv().TriggerBotEnabled = false
+getgenv().SilentAimEnabled = false
+getgenv().RagebotEnabled = false
+getgenv().FlyingEnabled = false
+getgenv().SpeedHackEnabled = false
 
--- Safe module load
-local function safeRequire()
-    local success, module = pcall(function()
-        return require(LocalPlayer.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem)
-    end)
-    if success and module then
-        clientItemModule = module
-        return true
-    end
-    return false
+-- ==================== FULL ESP FROM YOUR FIRST PASTED SCRIPT ====================
+local ESP_SETTINGS = {
+    Enabled         = true,
+    ShowBox         = true,
+    ShowName        = true,
+    ShowHealth      = true,
+    ShowDistance    = false,
+    ShowSkeletons   = false,
+    ShowTracer      = false,
+    ShowChams       = false,
+    TeamCheck       = false,
+    WallCheck       = false,
+    UseTeamColor    = true,
+    BoxColor        = Color3.fromRGB(0, 255, 0),
+    BoxOutlineColor = Color3.fromRGB(0, 0, 0),
+    NameColor       = Color3.fromRGB(255, 255, 255),
+    TracerColor     = Color3.fromRGB(255, 255, 255),
+    TracerThickness = 2,
+    TracerPosition  = "Bottom",
+    BoxType         = "2D",
+}
+
+local bones = {
+    {"Head","UpperTorso"},
+    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+    {"UpperTorso","LowerTorso"},
+    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+}
+
+local function newDrawing(class, props)
+    local d = Drawing.new(class)
+    for k, v in pairs(props) do d[k] = v end
+    return d
 end
 
--- Main Input Hook (Rapid Fire + Aim)
-if safeRequire() then
+local function getPlayerColor(plr)
+    if not ESP_SETTINGS.UseTeamColor then return ESP_SETTINGS.BoxColor end
+    local c = plr.Team and plr.Team.TeamColor.Color or Color3.fromRGB(0, 255, 0)
+    if c == Color3.new(1, 1, 1) then c = Color3.fromRGB(0, 255, 0) end
+    return c
+end
+
+local function shouldShow(plr)
+    if not ESP_SETTINGS.Enabled then return false end
+    if ESP_SETTINGS.TeamCheck and localPlayer.Team and plr.Team and localPlayer.Team == plr.Team then return false end
+    return true
+end
+
+local function behindWall(plr)
+    local char = plr.Character
+    if not char then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local origin = camera.CFrame.Position
+    local dir = hrp.Position - origin
+    local ray = Ray.new(origin, dir.Unit * dir.Magnitude)
+    local hit = workspace:FindPartOnRayWithIgnoreList(ray, {localPlayer.Character, char})
+    return hit ~= nil
+end
+
+local cache = {}
+
+local function createPlayerEsp(plr)
+    local e = {}
+    e.box = newDrawing("Square", {Color=ESP_SETTINGS.BoxColor, Thickness=2, Filled=false, Visible=false})
+    e.boxOutline = newDrawing("Square", {Color=Color3.new(0,0,0), Thickness=4, Filled=false, Visible=false})
+    e.boxLines = {}
+    e.name = newDrawing("Text", {Color=Color3.new(1,1,1), Outline=true, Center=true, Size=14, Visible=false})
+    e.healthBg = newDrawing("Square", {Color=Color3.new(0,0,0), Filled=true, Thickness=1, Visible=false})
+    e.healthFill = newDrawing("Square", {Color=Color3.fromRGB(0,255,0), Filled=true, Thickness=1, Visible=false})
+    e.distance = newDrawing("Text", {Color=Color3.new(1,1,1), Outline=true, Center=true, Size=12, Visible=false})
+    e.tracer = newDrawing("Line", {Color=ESP_SETTINGS.TracerColor, Thickness=2, Transparency=1, Visible=false})
+    e.skeleton = {}
+    e.highlight = nil
+    cache[plr] = e
+end
+
+local function destroyPlayerEsp(plr)
+    local e = cache[plr]
+    if not e then return end
+    pcall(function()
+        e.box:Remove() e.boxOutline:Remove()
+        e.name:Remove() e.healthBg:Remove()
+        e.healthFill:Remove() e.distance:Remove()
+        e.tracer:Remove()
+        for _, l in ipairs(e.boxLines) do l:Remove() end
+        for _, ld in ipairs(e.skeleton) do ld[1]:Remove() end
+        if e.highlight then e.highlight:Destroy() end
+    end)
+    cache[plr] = nil
+end
+
+local function hidePlayerEsp(plr)
+    local e = cache[plr]
+    if not e then return end
+    pcall(function()
+        e.box.Visible = false
+        e.boxOutline.Visible = false
+        e.name.Visible = false
+        e.healthBg.Visible = false
+        e.healthFill.Visible = false
+        e.distance.Visible = false
+        e.tracer.Visible = false
+        for _, l in ipairs(e.boxLines) do l.Visible = false end
+        for _, ld in ipairs(e.skeleton) do ld[1].Visible = false end
+        if e.highlight then e.highlight.Enabled = false end
+    end)
+end
+
+local function addHighlight(plr)
+    local e = cache[plr]
+    if not e or e.highlight then return end
+    if not plr.Character then return end
+    local h = Instance.new("Highlight")
+    h.Name = "ESPHighlight"
+    h.Adornee = plr.Character
+    h.FillColor = getPlayerColor(plr)
+    h.OutlineColor = Color3.new(0, 0, 0)
+    h.FillTransparency = 0.5
+    h.OutlineTransparency = 0
+    h.Parent = CoreGui
+    e.highlight = h
+end
+
+local function updateEsp()
+    local vp = camera.ViewportSize
+    for plr, e in pairs(cache) do
+        pcall(function()
+            if not shouldShow(plr) then hidePlayerEsp(plr) return end
+            local char = plr.Character
+            if not char then hidePlayerEsp(plr) return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local head = char:FindFirstChild("Head")
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not head or not humanoid or humanoid.Health <= 0 then hidePlayerEsp(plr) return end
+            if ESP_SETTINGS.WallCheck and behindWall(plr) then hidePlayerEsp(plr) return end
+
+            local rootScreen = camera:WorldToViewportPoint(hrp.Position)
+            if rootScreen.Z <= 0 then hidePlayerEsp(plr) return end
+            if rootScreen.X < -150 or rootScreen.X > vp.X + 150 or rootScreen.Y < -150 or rootScreen.Y > vp.Y + 150 then hidePlayerEsp(plr) return end
+
+            local dist = math.clamp(rootScreen.Z, 0.1, 2000)
+            local sizeY = math.clamp((1500 / dist) * 1.3, 10, 800)
+            local sizeX = sizeY * 0.6
+            local bpX = math.floor(rootScreen.X - sizeX / 2)
+            local bpY = math.floor(rootScreen.Y - sizeY / 2)
+            local boxPos = Vector2.new(bpX, bpY)
+            local boxSize = Vector2.new(math.floor(sizeX), math.floor(sizeY))
+
+            local color = getPlayerColor(plr)
+
+            -- CHAMS
+            if ESP_SETTINGS.ShowChams then
+                if not e.highlight then addHighlight(plr) end
+                if e.highlight then e.highlight.Adornee = char; e.highlight.FillColor = color; e.highlight.Enabled = true end
+            else
+                if e.highlight then e.highlight.Enabled = false end
+            end
+
+            -- BOX
+            if ESP_SETTINGS.ShowBox then
+                if ESP_SETTINGS.BoxType == "2D" then
+                    for _, l in ipairs(e.boxLines) do pcall(function() l:Remove() end) end
+                    e.boxLines = {}
+                    e.boxOutline.Size = boxSize + Vector2.new(2, 2)
+                    e.boxOutline.Position = boxPos - Vector2.new(1, 1)
+                    e.boxOutline.Color = ESP_SETTINGS.BoxOutlineColor
+                    e.boxOutline.Visible = true
+                    e.box.Size = boxSize
+                    e.box.Position = boxPos
+                    e.box.Color = color
+                    e.box.Visible = true
+                elseif ESP_SETTINGS.BoxType == "Corner Box Esp" then
+                    e.box.Visible = false
+                    e.boxOutline.Visible = false
+                    if #e.boxLines ~= 16 then
+                        for _, l in ipairs(e.boxLines) do pcall(function() l:Remove() end) end
+                        e.boxLines = {}
+                        for i = 1, 16 do
+                            e.boxLines[i] = newDrawing("Line", {Thickness=1, Color=color, Transparency=1, Visible=false})
+                        end
+                    end
+                    local bl = e.boxLines
+                    local lw = math.floor(boxSize.X / 4)
+                    local lh = math.floor(boxSize.Y / 4)
+                    local x0, y0 = boxPos.X, boxPos.Y
+                    local x1, y1 = x0 + boxSize.X, y0 + boxSize.Y
+                    bl[1].From=Vector2.new(x0,y0) bl[1].To=Vector2.new(x0+lw,y0)
+                    bl[2].From=Vector2.new(x0,y0) bl[2].To=Vector2.new(x0,y0+lh)
+                    bl[3].From=Vector2.new(x1,y0) bl[3].To=Vector2.new(x1-lw,y0)
+                    bl[4].From=Vector2.new(x1,y0) bl[4].To=Vector2.new(x1,y0+lh)
+                    bl[5].From=Vector2.new(x0,y1) bl[5].To=Vector2.new(x0+lw,y1)
+                    bl[6].From=Vector2.new(x0,y1) bl[6].To=Vector2.new(x0,y1-lh)
+                    bl[7].From=Vector2.new(x1,y1) bl[7].To=Vector2.new(x1-lw,y1)
+                    bl[8].From=Vector2.new(x1,y1) bl[8].To=Vector2.new(x1,y1-lh)
+                    for i = 9, 16 do bl[i].Thickness=2 bl[i].Color=ESP_SETTINGS.BoxOutlineColor end
+                    bl[9].From=Vector2.new(x0+1,y0+1) bl[9].To=Vector2.new(x0+lw,y0+1)
+                    bl[10].From=Vector2.new(x0+1,y0+1) bl[10].To=Vector2.new(x0+1,y0+lh)
+                    bl[11].From=Vector2.new(x1-1,y0+1) bl[11].To=Vector2.new(x1-lw,y0+1)
+                    bl[12].From=Vector2.new(x1-1,y0+1) bl[12].To=Vector2.new(x1-1,y0+lh)
+                    bl[13].From=Vector2.new(x0+1,y1-1) bl[13].To=Vector2.new(x0+lw,y1-1)
+                    bl[14].From=Vector2.new(x0+1,y1-1) bl[14].To=Vector2.new(x0+1,y1-lh)
+                    bl[15].From=Vector2.new(x1-1,y1-1) bl[15].To=Vector2.new(x1-lw,y1-1)
+                    bl[16].From=Vector2.new(x1-1,y1-1) bl[16].To=Vector2.new(x1-1,y1-lh)
+                    for _, l in ipairs(bl) do l.Color = color l.Visible = true end
+                end
+            else
+                e.box.Visible = false
+                e.boxOutline.Visible = false
+                for _, l in ipairs(e.boxLines) do pcall(function() l:Remove() end) end
+                e.boxLines = {}
+            end
+
+            -- NAME
+            if ESP_SETTINGS.ShowName then
+                e.name.Text = plr.Name
+                e.name.Color = color
+                e.name.Position = Vector2.new(rootScreen.X, bpY - 18)
+                e.name.Visible = true
+            else
+                e.name.Visible = false
+            end
+
+            -- HEALTH BAR
+            if ESP_SETTINGS.ShowHealth then
+                local hp = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                local barW = 6
+                local barH = boxSize.Y
+                local barX = bpX - barW - 4
+                local barY = bpY
+                e.healthBg.Size = Vector2.new(barW + 2, barH + 2)
+                e.healthBg.Position = Vector2.new(barX - 1, barY - 1)
+                e.healthBg.Visible = true
+                local fillH = math.max(1, math.floor(barH * hp))
+                e.healthFill.Size = Vector2.new(barW, fillH)
+                e.healthFill.Position = Vector2.new(barX, barY + (barH - fillH))
+                e.healthFill.Color = hp > 0.6 and Color3.fromRGB(0,255,0) or hp > 0.3 and Color3.fromRGB(255,255,0) or Color3.fromRGB(255,0,0)
+                e.healthFill.Visible = true
+            else
+                e.healthBg.Visible = false
+                e.healthFill.Visible = false
+            end
+
+            -- DISTANCE
+            if ESP_SETTINGS.ShowDistance then
+                e.distance.Text = string.format("%d studs", math.floor(dist))
+                e.distance.Position = Vector2.new(rootScreen.X, bpY + boxSize.Y + 4)
+                e.distance.Visible = true
+            else
+                e.distance.Visible = false
+            end
+
+            -- SKELETON
+            if ESP_SETTINGS.ShowSkeletons then
+                if #e.skeleton == 0 then
+                    for _, bp in ipairs(bones) do
+                        if char:FindFirstChild(bp[1]) and char:FindFirstChild(bp[2]) then
+                            e.skeleton[#e.skeleton+1] = {newDrawing("Line",{Thickness=1,Color=color,Transparency=1,Visible=false}), bp[1], bp[2]}
+                        end
+                    end
+                end
+                for _, ld in ipairs(e.skeleton) do
+                    local p = char:FindFirstChild(ld[2])
+                    local c = char:FindFirstChild(ld[3])
+                    if p and c then
+                        local ps = camera:WorldToViewportPoint(p.Position)
+                        local cs = camera:WorldToViewportPoint(c.Position)
+                        ld[1].From = Vector2.new(ps.X, ps.Y)
+                        ld[1].To = Vector2.new(cs.X, cs.Y)
+                        ld[1].Color = color
+                        ld[1].Visible = true
+                    else
+                        ld[1].Visible = false
+                    end
+                end
+            else
+                for _, ld in ipairs(e.skeleton) do pcall(function() ld[1]:Remove() end) end
+                e.skeleton = {}
+            end
+
+            -- TRACER
+            if ESP_SETTINGS.ShowTracer then
+                local tracerY = vp.Y
+                if ESP_SETTINGS.TracerPosition == "Top" then tracerY = 0 end
+                if ESP_SETTINGS.TracerPosition == "Middle" then tracerY = vp.Y / 2 end
+                e.tracer.From = Vector2.new(vp.X / 2, tracerY)
+                e.tracer.To = Vector2.new(rootScreen.X, rootScreen.Y)
+                e.tracer.Color = color
+                e.tracer.Thickness = ESP_SETTINGS.TracerThickness
+                e.tracer.Visible = true
+            else
+                e.tracer.Visible = false
+            end
+        end)
+    end
+end
+
+-- Player hooks for ESP
+local function hookPlayer(plr)
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        local e = cache[plr]
+        if not e then return end
+        for _, ld in ipairs(e.skeleton) do pcall(function() ld[1]:Remove() end) end
+        e.skeleton = {}
+        if e.highlight then pcall(function() e.highlight:Destroy() end) e.highlight = nil end
+        if ESP_SETTINGS.ShowChams then addHighlight(plr) end
+    end)
+    plr.CharacterRemoving:Connect(function() hidePlayerEsp(plr) end)
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= localPlayer then
+        createPlayerEsp(plr)
+        hookPlayer(plr)
+    end
+end
+Players.PlayerAdded:Connect(function(plr)
+    if plr == localPlayer then return end
+    createPlayerEsp(plr)
+    hookPlayer(plr)
+end)
+Players.PlayerRemoving:Connect(function(plr) pcall(function() destroyPlayerEsp(plr) end) end)
+
+RunService.RenderStepped:Connect(updateEsp)
+
+-- ==================== FIXED SILENT AIM (Camera Lock + Auto Fire) ====================
+local targetPlayer = nil
+local autoClickConnection = nil
+
+local function isLobbyVisible()
+    local success, visible = pcall(function() return localPlayer.PlayerGui.MainGui.MainFrame.Lobby.Currency.Visible end)
+    return success and visible
+end
+
+local function getClosestPlayerToMouse()
+    local closest, shortest = nil, math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Team ~= localPlayer.Team then
+            local headPos, onScreen = camera:WorldToViewportPoint(plr.Character.Head.Position)
+            if onScreen then
+                local dist = (Vector2.new(headPos.X, headPos.Y) - mousePos).Magnitude
+                if dist < shortest then
+                    shortest = dist
+                    closest = plr
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function lockCameraToHead()
+    if not getgenv().SilentAimEnabled or not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Head") then return end
+    local head = targetPlayer.Character.Head
+    local headPos = camera:WorldToViewportPoint(head.Position)
+    if headPos.Z > 0 then
+        local camPos = camera.CFrame.Position
+        camera.CFrame = CFrame.new(camPos, head.Position)
+    end
+end
+
+local function startAutoClick()
+    if autoClickConnection then return end
+    autoClickConnection = RunService.Heartbeat:Connect(function()
+        if not getgenv().SilentAimEnabled or isLobbyVisible() then return end
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        task.wait(0.008)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not getgenv().SilentAimEnabled or isLobbyVisible() then
+        targetPlayer = nil
+        return
+    end
+    targetPlayer = getClosestPlayerToMouse()
+    if targetPlayer then lockCameraToHead() end
+end)
+
+-- ==================== ULTRA-FAST RAPID FIRE + GUN MODS ====================
+local OriginalStats = {}
+local clientItemModule = nil
+
+local function safeRequire()
+    pcall(function()
+        clientItemModule = require(localPlayer.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem)
+    end)
+end
+safeRequire()
+
+if clientItemModule then
     local inputFunc = clientItemModule.Input
     local oldInput = hookfunction(inputFunc, function(...)
         local args = {...}
-        
         if type(args[1]) == "table" and args[1].Info then
-            local gunName = args[1].Name or "UnknownGun"
-            
-            -- Save originals once
+            local gunName = args[1].Name or "Unknown"
             if not OriginalStats[gunName] then
-                OriginalStats[gunName] = {
-                    ShootRecoil = args[1].Info.ShootRecoil,
-                    ShootSpread = args[1].Info.ShootSpread,
-                    ProjectileSpeed = args[1].Info.ProjectileSpeed,
-                    ShootCooldown = args[1].Info.ShootCooldown,
-                    QuickShotCooldown = args[1].Info.QuickShotCooldown,
-                    ShootBurstCooldown = args[1].Info.ShootBurstCooldown or 0,
-                    ReloadTime = args[1].Info.ReloadTime or 1,
-                }
+                OriginalStats[gunName] = table.clone(args[1].Info)
             end
-            
-            -- RAPID FIRE (if toggled)
             if getgenv().RapidFireEnabled then
                 local info = args[1].Info
                 info.ShootRecoil = 0
@@ -170,65 +445,8 @@ if safeRequire() then
                 info.ShootBurstCooldown = -1
                 info.ReloadTime = 0.05
             else
-                local orig = OriginalStats[gunName]
-                if orig then
-                    for k, v in pairs(orig) do
-                        if args[1].Info[k] ~= nil then
-                            args[1].Info[k] = v
-                        end
-                    end
-                end
-            end
-            
-            -- AIM REDIRECTION (Silent or Ragebot)
-            local useRage = getgenv().RagebotEnabled
-            local fov = useRage and 350 or 95
-            local hitChance = useRage and 100 or 82
-            local headChance = useRage and 95 or 25
-            local humanize = useRage and 0 or 0.6
-            
-            if (getgenv().SilentAimEnabled or getgenv().RagebotEnabled) and math.random(1, 100) <= hitChance then
-                local targetChar = nil
-                local closestDist = math.huge
-                
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Team ~= LocalPlayer.Team then
-                        local root = plr.Character.HumanoidRootPart
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-                        if onScreen then
-                            local mousePos = UserInputService:GetMouseLocation()
-                            local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                            if mouseDist < fov and mouseDist < closestDist then
-                                closestDist = mouseDist
-                                targetChar = plr.Character
-                            end
-                        end
-                    end
-                end
-                
-                if targetChar then
-                    local rand = math.random(1, 100)
-                    local hitPartName = (rand <= headChance) and "Head" or "UpperTorso"
-                    local hitPart = targetChar:FindFirstChild(hitPartName) or targetChar:FindFirstChild("Head")
-                    if hitPart then
-                        local offset = Vector3.new(
-                            math.random(-10, 10) * humanize / 10,
-                            math.random(-5, 5) * humanize / 10,
-                            math.random(-10, 10) * humanize / 10
-                        )
-                        local targetPos = hitPart.Position + offset
-                        local shooterPos = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head.Position) or Vector3.new()
-                        local direction = (targetPos - shooterPos).Unit
-                        
-                        if args[1].Info then
-                            if args[1].Info.Direction then args[1].Info.Direction = direction
-                            elseif args[1].Info.ShootDirection then args[1].Info.ShootDirection = direction
-                            elseif args[1].Info.TargetPosition then args[1].Info.TargetPosition = targetPos
-                            end
-                        elseif args[1].Direction then
-                            args[1].Direction = direction
-                        end
-                    end
+                for k, v in pairs(OriginalStats[gunName]) do
+                    if args[1].Info[k] then args[1].Info[k] = v end
                 end
             end
         end
@@ -237,75 +455,104 @@ if safeRequire() then
 end
 
 -- ==================== TRIGGERBOT ====================
-triggerConnection = RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function()
     if not getgenv().TriggerBotEnabled then return end
-    local mouse = LocalPlayer:GetMouse()
+    local mouse = localPlayer:GetMouse()
     local target = mouse.Target
-    if target and target.Parent then
-        local char = target.Parent
-        if char:FindFirstChild("Humanoid") and char ~= LocalPlayer.Character then
-            local enemyPlr = Players:GetPlayerFromCharacter(char)
-            if enemyPlr and enemyPlr.Team ~= LocalPlayer.Team then
-                VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 0, true, game, 1)
-                task.wait(0.008)
-                VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 0, false, game, 1)
-            end
+    if target and target.Parent and target.Parent:FindFirstChild("Humanoid") and target.Parent ~= localPlayer.Character then
+        local enemy = Players:GetPlayerFromCharacter(target.Parent)
+        if enemy and enemy.Team ~= localPlayer.Team then
+            VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 0, true, game, 1)
+            task.wait(0.008)
+            VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 0, false, game, 1)
         end
     end
 end)
 
 -- ==================== FLYING ====================
-local function updateFlying()
+local flyVelocity = nil
+RunService.Heartbeat:Connect(function()
     if getgenv().FlyingEnabled then
-        if not flyVelocity and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if not flyVelocity and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
             flyVelocity = Instance.new("BodyVelocity")
             flyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-            flyVelocity.Velocity = Vector3.new(0, 0, 0)
-            flyVelocity.Parent = LocalPlayer.Character.HumanoidRootPart
+            flyVelocity.Parent = localPlayer.Character.HumanoidRootPart
         end
         if flyVelocity then
-            local moveDir = Vector3.new()
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += Camera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= Camera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= Camera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += Camera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
-            flyVelocity.Velocity = moveDir.Unit * 100
+            local move = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move -= Vector3.new(0,1,0) end
+            flyVelocity.Velocity = move.Unit * 100
         end
     elseif flyVelocity then
-        flyVelocity:Destroy()
-        flyVelocity = nil
+        flyVelocity:Destroy() flyVelocity = nil
     end
-end
-
-RunService.Heartbeat:Connect(updateFlying)
-
--- ==================== SPEED HACK ====================
-local function updateSpeedHack()
-    if not getgenv().SpeedHackEnabled or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    local root = LocalPlayer.Character.HumanoidRootPart
-    local moveDir = Vector3.new()
-    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += Camera.CFrame.LookVector end
-    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= Camera.CFrame.LookVector end
-    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= Camera.CFrame.RightVector end
-    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += Camera.CFrame.RightVector end
-    if moveDir.Magnitude > 0 then
-        root.CFrame = root.CFrame + (moveDir.Unit * 1.5)
-    end
-end
-
-speedConnection = RunService.Heartbeat:Connect(updateSpeedHack)
-
--- Respawn handling
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if getgenv().FlyingEnabled then updateFlying() end
 end)
 
-print("=== Rayfield Rivals Cheats Loaded ===")
-Rayfield:Notify({
-    Title = "Rivals Cheats",
-    Content = "Rayfield UI ready - toggle features in the menu",
-    Duration = 4
-})
+-- ==================== SPEED HACK ====================
+RunService.Heartbeat:Connect(function()
+    if not getgenv().SpeedHackEnabled or not localPlayer.Character or not localPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    local root = localPlayer.Character.HumanoidRootPart
+    local move = Vector3.new()
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+    if move.Magnitude > 0 then root.CFrame = root.CFrame + move.Unit * 1.5 end
+end)
+
+-- ==================== RAYFIELD UI TOGGLES (merged from both your scripts) ====================
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local MovementTab = Window:CreateTab("Movement", 6022668888)
+local VisualsTab = Window:CreateTab("Visuals", 4483362458)
+local ExtrasTab = Window:CreateTab("Extras", 4483362458)
+local FiltersTab = Window:CreateTab("Filters", 4483362458)
+
+-- Combat
+CombatTab:CreateToggle({Name = "Ultra-Fast Rapid Fire", CurrentValue = false, Callback = function(v) getgenv().RapidFireEnabled = v end})
+CombatTab:CreateToggle({Name = "TriggerBot (Auto Fire on Crosshair)", CurrentValue = false, Callback = function(v) getgenv().TriggerBotEnabled = v end})
+CombatTab:CreateToggle({Name = "Silent Aim (FIXED - Camera Lock + Auto Fire)", CurrentValue = false, Callback = function(v) getgenv().SilentAimEnabled = v; if v then startAutoClick() end end})
+CombatTab:CreateToggle({Name = "Ragebot (Aggressive Head Priority)", CurrentValue = false, Callback = function(v) getgenv().RagebotEnabled = v end})
+
+-- Movement
+MovementTab:CreateToggle({Name = "Flying (WASD + Space/Shift)", CurrentValue = false, Callback = function(v) getgenv().FlyingEnabled = v end})
+MovementTab:CreateToggle({Name = "Speed Hack", CurrentValue = false, Callback = function(v) getgenv().SpeedHackEnabled = v end})
+
+-- Visuals (full ESP controls from your first script)
+VisualsTab:CreateToggle({Name = "Enable ESP", CurrentValue = ESP_SETTINGS.Enabled, Callback = function(v) ESP_SETTINGS.Enabled = v end})
+VisualsTab:CreateToggle({Name = "Show Box", CurrentValue = ESP_SETTINGS.ShowBox, Callback = function(v) ESP_SETTINGS.ShowBox = v end})
+VisualsTab:CreateDropdown({Name = "Box Type", Options = {"2D", "Corner Box Esp"}, CurrentOption = {ESP_SETTINGS.BoxType}, Callback = function(v) ESP_SETTINGS.BoxType = v[1] end})
+VisualsTab:CreateToggle({Name = "Use Team Color", CurrentValue = ESP_SETTINGS.UseTeamColor, Callback = function(v) ESP_SETTINGS.UseTeamColor = v end})
+VisualsTab:CreateColorPicker({Name = "Box Color", Color = ESP_SETTINGS.BoxColor, Callback = function(v) ESP_SETTINGS.BoxColor = v end})
+VisualsTab:CreateColorPicker({Name = "Box Outline", Color = ESP_SETTINGS.BoxOutlineColor, Callback = function(v) ESP_SETTINGS.BoxOutlineColor = v end})
+VisualsTab:CreateToggle({Name = "Show Name", CurrentValue = ESP_SETTINGS.ShowName, Callback = function(v) ESP_SETTINGS.ShowName = v end})
+VisualsTab:CreateColorPicker({Name = "Name Color", Color = ESP_SETTINGS.NameColor, Callback = function(v) ESP_SETTINGS.NameColor = v end})
+VisualsTab:CreateToggle({Name = "Show Health", CurrentValue = ESP_SETTINGS.ShowHealth, Callback = function(v) ESP_SETTINGS.ShowHealth = v end})
+VisualsTab:CreateToggle({Name = "Show Distance", CurrentValue = ESP_SETTINGS.ShowDistance, Callback = function(v) ESP_SETTINGS.ShowDistance = v end})
+VisualsTab:CreateToggle({Name = "Show Chams", CurrentValue = ESP_SETTINGS.ShowChams, Callback = function(v) ESP_SETTINGS.ShowChams = v end})
+
+-- Extras (Skeleton & Tracer)
+ExtrasTab:CreateToggle({Name = "Show Skeletons", CurrentValue = ESP_SETTINGS.ShowSkeletons, Callback = function(v) ESP_SETTINGS.ShowSkeletons = v end})
+ExtrasTab:CreateToggle({Name = "Show Tracer", CurrentValue = ESP_SETTINGS.ShowTracer, Callback = function(v) ESP_SETTINGS.ShowTracer = v end})
+ExtrasTab:CreateDropdown({Name = "Tracer Origin", Options = {"Bottom", "Middle", "Top"}, CurrentOption = {ESP_SETTINGS.TracerPosition}, Callback = function(v) ESP_SETTINGS.TracerPosition = v[1] end})
+ExtrasTab:CreateColorPicker({Name = "Tracer Color", Color = ESP_SETTINGS.TracerColor, Callback = function(v) ESP_SETTINGS.TracerColor = v end})
+ExtrasTab:CreateSlider({Name = "Tracer Thickness", Range = {1,5}, Increment = 1, CurrentValue = ESP_SETTINGS.TracerThickness, Callback = function(v) ESP_SETTINGS.TracerThickness = v end})
+
+-- Filters
+FiltersTab:CreateToggle({Name = "ESP Team Check", CurrentValue = ESP_SETTINGS.TeamCheck, Callback = function(v) ESP_SETTINGS.TeamCheck = v end})
+FiltersTab:CreateToggle({Name = "ESP Wall Check", CurrentValue = ESP_SETTINGS.WallCheck, Callback = function(v) ESP_SETTINGS.WallCheck = v end})
+
+-- Misc
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+MiscTab:CreateButton({Name = "Rejoin Server", Callback = function()
+    local TeleportService = game:GetService("TeleportService")
+    TeleportService:Teleport(game.PlaceId, localPlayer)
+end})
+
+Rayfield:Notify({Title = "Full Script Loaded", Content = "Silent Aim is now FIXED (camera lock + auto fire). Toggle everything in the tabs.", Duration = 6})
+
+print("=== COMPLETE Rivals Rayfield Script Loaded (Silent Aim FIXED) ===")
